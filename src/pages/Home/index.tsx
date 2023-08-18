@@ -24,11 +24,27 @@ const Home = () => {
     };
   });
 
+  const getCurrentTime = () => {
+    const padLeft = (value: number) => {
+      return value.toString().padStart(2, "0");
+    };
+
+    const date = new Date();
+    const hours = date.getHours();
+    const minutes = date.getMinutes();
+    const seconds = date.getSeconds();
+    const milliseconds = date.getMilliseconds();
+
+    return `${padLeft(hours)}:${padLeft(minutes)}:${padLeft(seconds)}.${padLeft(
+      milliseconds
+    )}`;
+  };
+
   const handleRegister = async () => {
     setLoading(true);
     const data = {
       user: user?.id,
-      clock: new Date(),
+      clock: getCurrentTime(),
     };
 
     try {
@@ -109,6 +125,7 @@ const Home = () => {
               }}
               color="#21254e"
               width="100%"
+              variant="outline"
             >
               Registrar
             </Button>

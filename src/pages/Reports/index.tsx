@@ -14,16 +14,19 @@ import {
   Tr,
   useToast,
 } from "@chakra-ui/react";
-
-import { Edit } from "@mui/icons-material/";
+import SaveIcon from "@mui/icons-material/Save";
 
 import { useContext, useEffect, useState } from "react";
 import Loading from "../../components/Loading";
 import { LoadingContext } from "../../contexts/LoadingContext";
 import { UserContext } from "../../contexts/UserContext";
 import api from "../../services/axios";
+import {
+  rootTimeToShort,
+  sumTimeByCreatedAtAtDayWork,
+} from "../../utils/dateTime";
 
-interface IClock {
+export interface IClock {
   id: number;
   clock: string;
   createdAt: string;
@@ -33,22 +36,13 @@ interface IReportResponse {
   clocks: IClock[];
 }
 
-interface ISelectedDate {
-  day: string;
-  clocks: IClock[] | undefined;
-}
-
 const Reports = () => {
   const [employeeClocksData, setEmpolyeeClocksData] =
     useState<IReportResponse>();
-  const [selectedDate, setSelectedDate] = useState<ISelectedDate>({
-    day: "",
-    clocks: [],
-  });
 
   const toast = useToast();
 
-  const [isOpen, setIsOpen] = useState<number | undefined>();
+  const [selectedClock, setSelectedClock] = useState<IClock>();
 
   const { user } = useContext(UserContext);
   const { loading, setLoading } = useContext(LoadingContext);
@@ -71,12 +65,15 @@ const Reports = () => {
     }
   };
 
-  const updateClocks = async () => {
+  const updateClock = async () => {
     setLoading(true);
 
     try {
-      const response = await api.put(`employee-clocks/${user.id}`, {
-        clocks: selectedDate.clocks,
+      const response = await api.put(`employee-clocks/${selectedClock?.id}`, {
+        data: {
+          clock: selectedClock?.clock,
+          user: user?.id,
+        },
       });
 
       if (response.status === 200) {
@@ -88,6 +85,9 @@ const Reports = () => {
         });
 
         setEmpolyeeClocksData(response.data);
+        setSelectedClock(undefined);
+
+        getClocks();
       }
     } catch (error) {
       toast({
@@ -106,24 +106,20 @@ const Reports = () => {
     getClocks();
   }, []);
 
-  const rootTimeToShort = (time: string) => {
-    return Intl.DateTimeFormat("pt-BR", {
-      hour: "2-digit",
-      minute: "2-digit",
-    }).format(new Date(new Date(`2000-01-01T${time}`)));
-  };
-
   const shortTimeToLong = (time: string) => {
     return `${time}:00.000`;
   };
 
-  const days = Array.from(
-    new Set(
-      employeeClocksData?.clocks.map((item) =>
-        Intl.DateTimeFormat("pt-BR").format(new Date(item.createdAt))
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const removeDuplicates = () => {
+    return Array.from(
+      new Set(
+        employeeClocksData?.clocks?.map((item) =>
+          Intl.DateTimeFormat("pt-BR").format(new Date(item.createdAt))
+        )
       )
-    )
-  );
+    );
+  };
 
   return (
     <Box display="flex" marginTop="40px" justifyContent="center" width="100vw">
@@ -146,19 +142,75 @@ const Reports = () => {
                 <Th fontWeight="extrabold" fontSize="md">
                   Total
                 </Th>
-
-                <Th fontWeight="extrabold" fontSize="md">
-                  Ações
-                </Th>
               </Tr>
             </Thead>
             <Tbody border="1px solid #eaeaea">
-              {days.map((day) => {
+              {removeDuplicates().map((day) => {
                 return (
                   <Tr key={day}>
                     <Td border="1px solid #eaeaea">{day}</Td>
 
-                    <Td>
+                    <Td border="1px solid #eaeaea">
+                      {employeeClocksData?.clocks
+                        .sort((a, b) => {
+                          if (a > b) {
+                            return 1;
+                          }
+                          if (a < b) {
+                            return -1;
+                          }
+                          return 0;
+                        })
+                        .map((clock, index) => {
+                          return index % 2 === 0 &&
+                            clock.clock &&
+                            day ===
+                              Intl.DateTimeFormat("pt-BR").format(
+                                new Date(clock.createdAt)
+                              ) ? (
+                            selectedClock?.id === clock.id ? (
+                              <Flex padding="12px" gap="16px" key={clock.id}>
+                                <Input
+                                  type="time"
+                                  value={
+                                    rootTimeToShort(selectedClock.clock) || ""
+                                  }
+                                  onChange={(e) => {
+                                    setSelectedClock({
+                                      ...selectedClock,
+                                      clock: shortTimeToLong(e.target.value),
+                                    });
+                                  }}
+                                />
+
+                                <IconButton
+                                  aria-label="save"
+                                  icon={<SaveIcon />}
+                                  onClick={() => {
+                                    updateClock();
+                                  }}
+                                />
+                              </Flex>
+                            ) : (
+                              <Flex padding="12px">
+                                <Tooltip label="Editar">
+                                  <Tr
+                                    cursor="pointer"
+                                    key={clock.id}
+                                    onClick={() => {
+                                      setSelectedClock(clock);
+                                    }}
+                                  >
+                                    {rootTimeToShort(clock.clock)}
+                                  </Tr>
+                                </Tooltip>
+                              </Flex>
+                            )
+                          ) : null;
+                        })}
+                    </Td>
+
+                    <Td border="1px solid #eaeaea">
                       {employeeClocksData?.clocks
                         .sort((a, b) => {
                           if (a > b) {
@@ -170,56 +222,59 @@ const Reports = () => {
                           return 0;
                         })
                         .map((clock, index) =>
-                          index % 2 !== 0 && clock.clock ? (
-                            isOpen === clock.id ? (
-                              <Input
-                                type="time"
-                                value={rootTimeToShort(clock.clock)}
-                                onChange={(e) => {
-                                  setSelectedDate({
-                                    ...selectedDate,
-                                    clocks: selectedDate.clocks?.map(
-                                      (itemToChange) => {
-                                        return itemToChange.id === clock.id
-                                          ? {
-                                              id: itemToChange.id,
-                                              clock: shortTimeToLong(
-                                                e.target.value
-                                              ),
-                                              createdAt: itemToChange.createdAt,
-                                            }
-                                          : itemToChange;
-                                      }
-                                    ),
-                                  });
-                                }}
-                              />
+                          index % 2 !== 0 &&
+                          clock.clock &&
+                          day ===
+                            Intl.DateTimeFormat("pt-BR").format(
+                              new Date(clock.createdAt)
+                            ) ? (
+                            selectedClock?.id === clock.id ? (
+                              <Flex padding="12px" gap="16px" key={clock.id}>
+                                <Input
+                                  type="time"
+                                  value={
+                                    rootTimeToShort(selectedClock.clock) || ""
+                                  }
+                                  onChange={(e) => {
+                                    setSelectedClock({
+                                      ...selectedClock,
+                                      clock: shortTimeToLong(e.target.value),
+                                    });
+                                  }}
+                                />
+
+                                <IconButton
+                                  aria-label="save"
+                                  icon={<SaveIcon />}
+                                  onClick={() => {
+                                    updateClock();
+                                  }}
+                                />
+                              </Flex>
                             ) : (
-                              <Tr
-                                key={clock.id}
-                                onClick={() => {
-                                  setIsOpen(clock.id);
-                                }}
-                              >
-                                {rootTimeToShort(clock.clock)}
-                              </Tr>
+                              <Flex padding="12px">
+                                <Tooltip label="Editar">
+                                  <Tr
+                                    cursor="pointer"
+                                    key={clock.id}
+                                    onClick={() => {
+                                      setSelectedClock(clock);
+                                    }}
+                                  >
+                                    {rootTimeToShort(clock.clock)}
+                                  </Tr>
+                                </Tooltip>
+                              </Flex>
                             )
                           ) : null
                         )}
                     </Td>
 
-                    <Td border="1px solid #eaeaea">
-                      {employeeClocksData?.clocks.map((item, index) => (
-                        <Tr key={item.id}>
-                          {index % 2 === 0 && item.clock === day
-                            ? item.clock
-                            : null}
-                        </Tr>
-                      ))}
-                    </Td>
-
                     <Td>
-                      <Flex gap="16px">10:00</Flex>
+                      {sumTimeByCreatedAtAtDayWork(
+                        employeeClocksData?.clocks,
+                        day
+                      )}
                     </Td>
                   </Tr>
                 );
@@ -228,24 +283,6 @@ const Reports = () => {
           </Table>
         </TableContainer>
       )}
-      {/* <Input
-        type="time"
-        value={rootTimeToShort(item.clock) || ""}
-        onChange={(e) => {
-          setSelectedDate({
-            ...selectedDate,
-            clocks: selectedDate.clocks?.map((itemToChange) => {
-              return itemToChange.id === item.id
-                ? {
-                    id: itemToChange.id,
-                    clock: shortTimeToLong(e.target.value),
-                    createdAt: itemToChange.createdAt,
-                  }
-                : itemToChange;
-            }),
-          });
-        }}
-      /> */}
     </Box>
   );
 };
